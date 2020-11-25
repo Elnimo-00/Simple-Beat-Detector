@@ -1,2 +1,67 @@
 # Simple-Beat-Detector
-This tiny python project allows to breakdown an audio file and continuous output of which beat is
+#This tiny python project allows to breakdown an audio file and continuous output of which beat is
+import pyaudio
+import wave
+import time
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+import wavio
+global sums
+plt.style.use('ggplot')
+
+#if len(sys.argv) <2:
+#    print("plays a wave file \n\nUsage: %s filename.wav" %sys.argv[0])
+ #   sys.exit(-1)
+
+wf=wave.open('Weightless.wav', 'rb')
+fs=wf.getframerate()
+channels=wf.getnchannels()
+bytes_per_sample=wf.getsampwidth()
+print(wf.getframerate())
+p=pyaudio.PyAudio()
+
+global baseline
+baseline=np.zeros(512)
+global n
+n=0
+def averageStream(x,n,baseline):
+    for idx, val in enumerate(x):
+        baseline[idx]=((baseline[idx]*(n-1))+val)/n
+def beat_detect(in_data):
+    audio=wavio._wav2array(channels, bytes_per_sample, in_data)
+    audio_fft=np.abs((np.fft.fft(audio[:,1])[0:int(len(audio)/2)])/len(audio))
+    freqs=fs*np.arange(len(audio)/2)/len(audio)
+
+    low_indices=[idx for idx,val in enumerate(freqs) if val>=60 and val<=250]
+    mid_indices=[idx for idx,val in enumerate(freqs) if val>=500 and val<=2000]
+    high_indices=[idx for idx,val in enumerate(freqs) if val>=4000 and val<=6000]
+
+    global n
+    global sums
+    global baseline
+
+    if np.any(audio_fft[low_indices]>baseline[low_indices]*30):
+        print("low beat")
+    if np.any(audio_fft[mid_indices] > baseline[mid_indices] * 100):
+        print("mid beat")
+    if np.any(audio_fft[high_indices] > baseline[high_indices] * 100):
+        print("high beat")
+    baseline=audio_fft
+def callback(in_data, frame_count, time_info, status):
+    data=wf.readframes(frame_count)
+    beat_detect(data)
+    return (data, pyaudio.paContinue)
+stream=p.open(format=p.get_format_from_width(wf.getsampwidth()),
+              channels=wf.getnchannels(),
+              rate=wf.getframerate(),
+              output=True,
+              stream_callback=callback)
+stream.start_stream()
+while stream.is_active():
+    time.sleep(0.1)
+stream.stop_stream()
+stream.close()
+wf.close()
+p.terminate()
+
